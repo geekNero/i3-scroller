@@ -203,6 +203,39 @@ func Collect(direction Edge) {
 
 }
 
+func AutoSplit(direction Edge) {
+	tree, _ := i3.GetTree()
+	focusedNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Focused })
+	if focusedNode == nil {
+		return
+	}
+
+	if direction == LEFT {
+		i3.RunCommand("focus left")
+	} else {
+		i3.RunCommand("focus right")
+	}
+
+	tree, _ = i3.GetTree()
+	newFocusedNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Focused })
+
+	if newFocusedNode == nil || newFocusedNode.ID == focusedNode.ID {
+		return
+	}
+
+	cmd := fmt.Sprintf(`[con_id="%d"] mark "_auto_split_target"; [con_id="%d"] split v; `, newFocusedNode.ID, newFocusedNode.ID)
+	cmd += fmt.Sprintf(`[con_id="%d"] move container to mark "_auto_split_target"; `, focusedNode.ID)
+
+	if direction == RIGHT {
+		cmd += fmt.Sprintf(`[con_id="%d"] move up; `, focusedNode.ID)
+	}
+
+	cmd += fmt.Sprintf(`[con_id="%d"] unmark "_auto_split_target"; `, newFocusedNode.ID)
+	cmd += fmt.Sprintf(`[con_id="%d"] focus`, focusedNode.ID)
+
+	i3.RunCommand(cmd)
+}
+
 func main() {
 
 	if len(os.Args) < 2 {
@@ -223,6 +256,10 @@ func main() {
 		Collect(LEFT)
 	case "collect-right":
 		Collect(RIGHT)
+	case "auto-split-left":
+		AutoSplit(LEFT)
+	case "auto-split-right":
+		AutoSplit(RIGHT)
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 	}
