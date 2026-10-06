@@ -77,32 +77,15 @@ func moveContainerToWorkspace(workspace string, container *i3.Node, edge Edge) {
 	wNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Type == i3.WorkspaceNode && n.Name == workspace })
 	if wNode == nil || len(wNode.Nodes) == 0 {
 		i3.RunCommand(fmt.Sprintf("[con_id=\"%d\"] move container to workspace %s", container.ID, workspace))
-		return
 	} else {
-
-		markContainer := wNode.Nodes[len(wNode.Nodes)-1]
 		if edge == LEFT {
-			markContainer = wNode.Nodes[0]
+			i3.RunCommand(fmt.Sprintf("[con_id=\"%d\"] move container to workspace %s", container.ID, workspace))
+		} else {
+			cmd := fmt.Sprintf(`[con_id="%d"] mark "_temp_target"; `+
+				`[con_id="%d"] move container to mark "_temp_target"; `+
+				`[con_id="%d"] unmark "_temp_target";`, wNode.ID, container.ID, wNode.ID)
+			i3.RunCommand(cmd)
 		}
-
-		fmt.Println(markContainer.Layout)
-
-		cmd := fmt.Sprintf(`[con_id="%d"] mark "_temp_target"; `+
-			`[con_id="%d"] move container to mark "_temp_target"; `+
-			`[con_id="%d"] unmark "_temp_target";`, markContainer.ID, container.ID, markContainer.ID)
-
-		if edge == LEFT {
-			cmd += fmt.Sprintf(` [con_id="%d"] move left;`, container.ID)
-		}
-		if markContainer.Name == "" {
-
-			if edge == LEFT {
-				cmd += fmt.Sprintf(` [con_id="%d"] move left;`, container.ID)
-			} else {
-				cmd += fmt.Sprintf(` [con_id="%d"] move right`, container.ID)
-			}
-		}
-		i3.RunCommand(cmd)
 	}
 }
 
