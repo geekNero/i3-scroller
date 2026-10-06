@@ -54,8 +54,7 @@ func getFocusedWorkspaceName() string {
 	return ""
 }
 
-func getEdgeNode(workspace string, edge Edge) *i3.Node {
-	tree, _ := i3.GetTree()
+func getEdgeNode(tree *i3.Tree, workspace string, edge Edge) *i3.Node {
 	wNode := findNode(tree.Root, func(n *i3.Node) bool { return n.Type == i3.WorkspaceNode && n.Name == workspace })
 
 	if wNode == nil || len(wNode.Nodes) == 0 {
@@ -71,9 +70,23 @@ func getEdgeNode(workspace string, edge Edge) *i3.Node {
 	}
 }
 
-func moveContainerToWorkspace(workspace string, container *i3.Node, edge Edge) {
-	tree, _ := i3.GetTree()
+func getEdgeContainer(node *i3.Node, edge Edge) *i3.Node {
+	if node.Window > 0 {
+		return node
+	}
 
+	cur := node
+	for cur.Window == 0 {
+		if edge == LEFT {
+			cur = cur.Nodes[0]
+		} else {
+			cur = cur.Nodes[len(cur.Nodes)-1]
+		}
+	}
+	return cur
+}
+
+func moveContainerToWorkspace(tree *i3.Tree, workspace string, container *i3.Node, edge Edge) {
 	wNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Type == i3.WorkspaceNode && n.Name == workspace })
 	if wNode == nil || len(wNode.Nodes) == 0 {
 		i3.RunCommand(fmt.Sprintf("[con_id=\"%d\"] move container to workspace %s", container.ID, workspace))
@@ -90,6 +103,7 @@ func moveContainerToWorkspace(workspace string, container *i3.Node, edge Edge) {
 }
 
 func Scroll(direction Edge) {
+	tree, _ := i3.GetTree()
 
 	activeWsName := getFocusedWorkspaceName()
 	if activeWsName == "" {
@@ -106,35 +120,137 @@ func Scroll(direction Edge) {
 	if direction == LEFT {
 		targetWS = rwName
 		sourceWS = lwName
-		oldNode = getEdgeNode(activeWsName, RIGHT)
+		oldNode = getEdgeNode(&tree, activeWsName, RIGHT)
 	} else {
 		targetWS = lwName
 		sourceWS = rwName
-		oldNode = getEdgeNode(activeWsName, LEFT)
+		oldNode = getEdgeNode(&tree, activeWsName, LEFT)
 	}
 
 	if oldNode == nil {
 		return
 	}
 
-	newNode := getEdgeNode(sourceWS, RIGHT)
+	newNode := getEdgeNode(&tree, sourceWS, RIGHT)
 	if newNode == nil {
 		return
 	}
 
 	if direction == LEFT {
-		moveContainerToWorkspace(targetWS, oldNode, RIGHT)
-		moveContainerToWorkspace(activeWsName, newNode, LEFT)
+		moveContainerToWorkspace(&tree, targetWS, oldNode, RIGHT)
+		moveContainerToWorkspace(&tree, activeWsName, newNode, LEFT)
 	} else {
-		moveContainerToWorkspace(targetWS, oldNode, RIGHT)
-		moveContainerToWorkspace(activeWsName, newNode, RIGHT)
+		moveContainerToWorkspace(&tree, targetWS, oldNode, RIGHT)
+		moveContainerToWorkspace(&tree, activeWsName, newNode, RIGHT)
 	}
 
-	i3.RunCommand(fmt.Sprintf("[con_id=\"%d\"] focus", newNode.ID))
+	var focusTarget *i3.Node
+
+	if direction == RIGHT {
+
+		focusTarget = getEdgeContainer(newNode, LEFT)
+	} else {
+		focusTarget = getEdgeContainer(newNode, RIGHT)
+	}
+
+	i3.RunCommand(fmt.Sprintf("[con_id=\"%d\"] focus", focusTarget.ID))
 
 }
 
+func Focus(direction Edge) {
+	tree, _ := i3.GetTree()
+	activeWsName := getFocusedWorkspaceName()
+	if activeWsName == "" {
+		return
+	}
+
+	focusedNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Focused })
+	if focusedNode == nil {
+		return
+	}
+
+	wsNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Type == i3.WorkspaceNode && n.Name == activeWsName })
+	if wsNode == nil || len(wsNode.Nodes) == 0 {
+		return
+	}
+
+	var absoluteEdgeNode *i3.Node
+	if direction == LEFT {
+		node := wsNode.Nodes[0]
+		for node != nil && len(node.Nodes) > 0 {
+			node = node.Nodes[0]
+		}
+		absoluteEdgeNode = node
+	} else {
+		node := wsNode.Nodes[len(wsNode.Nodes)-1]
+		for node != nil && len(node.Nodes) > 0 {
+			node = node.Nodes[len(node.Nodes)-1]
+		}
+		absoluteEdgeNode = node
+	}
+
+	if absoluteEdgeNode != nil && focusedNode.ID == absoluteEdgeNode.ID {
+		Scroll(direction)
+	} else {
+		if direction == LEFT {
+			i3.RunCommand("focus left")
+		} else {
+			i3.RunCommand("focus right")
+		}
+	}
+}
+
 func Move(direction Edge) {
+	tree, _ := i3.GetTree()
+	activeWsName := getFocusedWorkspaceName()
+	if activeWsName == "" {
+		return
+	}
+
+	focusedNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Focused })
+	if focusedNode == nil {
+		return
+	}
+
+	wsNode := tree.Root.FindChild(func(n *i3.Node) bool { return n.Type == i3.WorkspaceNode && n.Name == activeWsName })
+	if wsNode == nil || len(wsNode.Nodes) == 0 {
+		return
+	}
+
+	var absoluteEdgeNode *i3.Node
+	if direction == LEFT {
+		node := wsNode.Nodes[0]
+		for node != nil && len(node.Nodes) > 0 {
+			node = node.Nodes[0]
+		}
+		absoluteEdgeNode = node
+	} else {
+		node := wsNode.Nodes[len(wsNode.Nodes)-1]
+		for node != nil && len(node.Nodes) > 0 {
+			node = node.Nodes[len(node.Nodes)-1]
+		}
+		absoluteEdgeNode = node
+	}
+
+	if absoluteEdgeNode != nil && focusedNode.ID == absoluteEdgeNode.ID {
+		var targetWs string
+		if direction == RIGHT {
+			targetWs = "R" + getSpelledName(activeWsName)
+		} else {
+			targetWs = "L" + getSpelledName(activeWsName)
+		}
+		moveContainerToWorkspace(&tree, targetWs, focusedNode, RIGHT)
+	} else {
+		if direction == LEFT {
+			i3.RunCommand("move left")
+		} else {
+			i3.RunCommand("move right")
+		}
+	}
+}
+
+func Send(direction Edge) {
+	tree, _ := i3.GetTree()
 
 	activeWsName := getFocusedWorkspaceName()
 	if activeWsName == "" {
@@ -142,7 +258,7 @@ func Move(direction Edge) {
 	}
 
 	var targetWs string
-	var oldNode = getEdgeNode(activeWsName, direction)
+	var oldNode = getEdgeNode(&tree, activeWsName, direction)
 
 	if oldNode == nil {
 		return
@@ -153,10 +269,11 @@ func Move(direction Edge) {
 		targetWs = "L" + getSpelledName(activeWsName)
 	}
 
-	moveContainerToWorkspace(targetWs, oldNode, RIGHT)
+	moveContainerToWorkspace(&tree, targetWs, oldNode, RIGHT)
 }
 
 func Collect(direction Edge) {
+	tree, _ := i3.GetTree()
 	activeWsName := getFocusedWorkspaceName()
 	if activeWsName == "" {
 		return
@@ -173,15 +290,15 @@ func Collect(direction Edge) {
 		sourceWS = rwName
 	}
 
-	newNode := getEdgeNode(sourceWS, RIGHT)
+	newNode := getEdgeNode(&tree, sourceWS, RIGHT)
 	if newNode == nil {
 		return
 	}
 
 	if direction == LEFT {
-		moveContainerToWorkspace(activeWsName, newNode, LEFT)
+		moveContainerToWorkspace(&tree, activeWsName, newNode, LEFT)
 	} else {
-		moveContainerToWorkspace(activeWsName, newNode, RIGHT)
+		moveContainerToWorkspace(&tree, activeWsName, newNode, RIGHT)
 	}
 
 }
@@ -235,6 +352,10 @@ func main() {
 		Move(LEFT)
 	case "move-right":
 		Move(RIGHT)
+	case "send-left":
+		Send(LEFT)
+	case "send-right":
+		Send(RIGHT)
 	case "collect-left":
 		Collect(LEFT)
 	case "collect-right":
@@ -243,6 +364,10 @@ func main() {
 		AutoSplit(LEFT)
 	case "auto-split-right":
 		AutoSplit(RIGHT)
+	case "focus-left":
+		Focus(LEFT)
+	case "focus-right":
+		Focus(RIGHT)
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 	}
